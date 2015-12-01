@@ -1,0 +1,44 @@
+<!DOCTYPE HTML>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title></title>
+  <script>
+    var socket;
+    window.addEventListener("load", function() {
+      var url = "ws://" + location.host + "/chatsocket";
+      socket = new WebSocket(url);
+      socket.onmessage = function(event) {
+        receiveChat(JSON.parse(event.data)["chats"])
+      }
+      socket.onclose = function(event) {
+        alert("disconnected"); 
+      };
+      
+      document.getElementById("chatInput").addEventListener("keydown", function(e) {
+        if(e.which == 13) {
+          sendChat(e.target.value);
+          e.target.value = "";
+        }
+      }, false);
+    }, false);
+
+    function sendChat(text) {
+      socket.send(JSON.stringify({"body": text}))
+    }
+
+    function receiveChat(chats) {
+      chats.forEach(function(chat) { 
+        var chat_list = document.createElement("li");
+        chat_list.innerText = chat["body"];
+        document.getElementById("chatField").insertBefore(chat_list, document.querySelector("#chatField :first-child"));
+      })
+    };
+  </script>
+</head>
+<body>
+  <p>Text here:<input type="text" id="chatInput"/></p>
+  <ul id="chatField">
+  </ul>
+</body>
+</html>
