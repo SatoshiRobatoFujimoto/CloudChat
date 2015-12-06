@@ -1,3 +1,4 @@
+import json
 import os.path
 
 import tornado.web
@@ -5,6 +6,7 @@ import tornado.websocket
 import tornado.ioloop
 import tornado.options
 from tornado.options import define, options
+from redis import Redis
 
 define("port", default=8888, help="run on the given port", type=int)
 
@@ -28,18 +30,31 @@ class MainHandler(tornado.web.RequestHandler):
 
 class ChatSocketHandler(tornado.websocket.WebSocketHandler):
     waiters = set()
-    cache = []
+    redis = Redis(decode_responses=True)
 
     def open(self):
         ChatSocketHandler.waiters.add(self)
-        self.write_message({"chats": ChatSocketHandler.cache})
+        self.write_message({"chats": ChatSocketHandler.get_caches()})
 
     def on_close(self):
         ChatSocketHandler.waiters.remove(self)
 
     @classmethod
     def update_cache(cls, chat):
-        cls.cache.append(chat)
+        chat_id = cls.redis.incr("nextChatId")
+        redis_chat_key = "chat:{}".format(chat_id)
+
+        cls.redis.set(redis_chat_key, json.dumps(chat))
+        cls.redis.rpush("chats", redis_chat_key)
+
+    @classmethod
+    def get_caches(cls):
+      chat_ids = cls.redis.lrange("chats", 0, -1)
+      chats = []
+      for chat_id in chat_ids:
+        chat = json.loads(cls.redis.get(chat_id))
+        chats.append(chat)
+      return chats
 
     @classmethod
     def send_updates(cls, chat):
