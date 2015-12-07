@@ -1,4 +1,5 @@
 import json
+import threading
 import os.path
 
 import tornado.web
@@ -28,9 +29,28 @@ class MainHandler(tornado.web.RequestHandler):
     def get(self):
         self.render("index.html")
 
+class Listener(threading.Thread):
+    def __init__(self, r):
+        threading.Thread.__init__(self)
+        self.redis = r
+        self.pubsub = self.redis.pubsub()
+        self.pubsub.subscribe(["chats"])
+    def work(self, item):
+        if item["type"] == "message":
+            chat = json.loads(item["data"])
+            ChatSocketHandler.send_updates(chat)
+    def run(self):
+        for item in self.pubsub.listen():
+            if item['data'] == "KILL":
+                self.pubsub.unsubscribe()
+            else:
+                self.work(item)
+
 class ChatSocketHandler(tornado.websocket.WebSocketHandler):
     waiters = set()
     redis = Redis(decode_responses=True)
+    client = Listener(redis)
+    client.start()
 
     def open(self):
         ChatSocketHandler.waiters.add(self)
@@ -61,7 +81,7 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
             try:
                 waiter.write_message(chat)
             except:
-                logging.error("Error sending message", exc_info=True)
+                print("Error sending message")
 
     def on_message(self, message):
         parsed = tornado.escape.json_decode(message)
@@ -72,11 +92,12 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
           chat = {
               "body": parsed["body"],
               }
-          ChatSocketHandler.update_cache(chat)
-          ChatSocketHandler.send_updates({
-            "chats": [chat]
-          })
 
+          ChatSocketHandler.update_cache(chat)
+          ChatSocketHandler.redis.publish("chats", json.dumps({
+              "chats": [chat]
+          }))
+        
 def main():
     tornado.options.parse_command_line()
     app = Application()
