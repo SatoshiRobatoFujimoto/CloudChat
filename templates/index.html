@@ -6,15 +6,43 @@
   <script>
     var socket;
     window.addEventListener("load", function() {
-      var url = "ws://" + location.host + "/chatsocket";
-      socket = new WebSocket(url);
-      socket.onmessage = function(event) {
-        receiveChat(JSON.parse(event.data)["chats"])
+      connect(function() {
+        alert("connection error"); 
+      }, closeFunction, function() {
+        socket.send(JSON.stringify({"type":"command", "command":"requestFirstChat"}))
+      });
+
+      function connect(errorFunction, closeFunction, openFunction) {
+        var url = "ws://" + location.host + "/chatsocket";
+        socket = new WebSocket(url);
+        socket.onmessage = function(event) {
+          receiveChat(JSON.parse(event.data)["chats"])
+        }
+        socket.onclose = closeFunction;
+        socket.onerror = errorFunction;
+        socket.onopen = openFunction;
       }
-      socket.onclose = function(event) {
-        alert("disconnected"); 
+
+      function closeFunction(event) {
+        var retry = 0;
+        setTimeout(function() {
+          var callee = arguments.callee;
+          connect(function() {
+            retry++;
+
+            if(retry < 3) {
+              setTimeout(function() {
+                callee();
+              }, 3000);
+            } else {
+              alert("connection error");
+            }
+          }, null, function() {
+            socket.onclose = closeFunction;
+          });
+        }, 1000);
       };
-      
+     
       document.getElementById("chatInput").addEventListener("keydown", function(e) {
         if(e.which == 13) {
           sendChat(e.target.value);
@@ -28,7 +56,7 @@
     }
 
     function receiveChat(chats) {
-      chats.forEach(function(chat) { 
+      chats.forEach(function(chat) {
         var chat_list = document.createElement("li");
         chat_list.innerText = chat["body"];
         document.getElementById("chatField").insertBefore(chat_list, document.querySelector("#chatField :first-child"));

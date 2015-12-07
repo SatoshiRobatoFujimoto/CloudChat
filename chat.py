@@ -34,7 +34,6 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
 
     def open(self):
         ChatSocketHandler.waiters.add(self)
-        self.write_message({"chats": ChatSocketHandler.get_caches()})
 
     def on_close(self):
         ChatSocketHandler.waiters.remove(self)
@@ -66,14 +65,17 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
 
     def on_message(self, message):
         parsed = tornado.escape.json_decode(message)
-        chat = {
-            "body": parsed["body"],
-            }
-
-        ChatSocketHandler.update_cache(chat)
-        ChatSocketHandler.send_updates({
-          "chats": [chat]
-        })
+        if "type" in parsed and parsed["type"] == "command":
+            if parsed["command"] == "requestFirstChat":
+                self.write_message({"chats": ChatSocketHandler.get_caches()})
+        else:
+          chat = {
+              "body": parsed["body"],
+              }
+          ChatSocketHandler.update_cache(chat)
+          ChatSocketHandler.send_updates({
+            "chats": [chat]
+          })
 
 def main():
     tornado.options.parse_command_line()
